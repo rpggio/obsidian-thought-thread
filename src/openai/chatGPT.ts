@@ -1,7 +1,11 @@
 import { request, RequestUrlParam } from 'obsidian'
 import { openai } from './chatGPT-types'
 
-export const OPENAI_COMPLETIONS_URL = `https://api.openai.com/v1/chat/completions`
+export const DEFAULT_OPENAI_COMPLETIONS_URL = `https://api.openai.com/v1/chat/completions`
+
+export const getOpenAICompletionsURL = (configuredUrl?: string): string => {
+	return configuredUrl || DEFAULT_OPENAI_COMPLETIONS_URL
+}
 
 export type ChatModelSettings = {
 	name: string,
@@ -62,6 +66,10 @@ export const CHAT_MODELS = {
 	GPT_4_32K_0613: {
 		name: 'gpt-4-32k-0613',
 		tokenLimit: 32768
+	},
+	CUSTOMIZE: {
+		name: 'customize',
+		tokenLimit: 0
 	}
 }
 
@@ -89,15 +97,19 @@ export async function getChatGPTCompletion(
 	messages: openai.CreateChatCompletionRequest['messages'],
 	settings?: Partial<
 		Omit<openai.CreateChatCompletionRequest, 'messages' | 'model'>
-	>
+	>,
+	customModelName?: string
 ): Promise<string | undefined> {
 	const headers = {
 		Authorization: `Bearer ${apiKey}`,
 		'Content-Type': 'application/json'
 	}
+	const actualModel = model === CHAT_MODELS.CUSTOMIZE.name && customModelName 
+		? customModelName 
+		: (model ?? CHAT_MODELS.GPT_35_TURBO.name)
 	const body: openai.CreateChatCompletionRequest = {
 		messages,
-		model,
+		model: actualModel,
 		...settings
 	}
 	const requestParam: RequestUrlParam = {

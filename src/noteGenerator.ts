@@ -105,16 +105,22 @@ export function noteGenerator(
 	}
 
 	const buildMessages = async (node: CanvasNode) => {
-		const encoding = getEncoding(settings)
-
 		const messages: openai.ChatCompletionRequestMessage[] = []
+		const isCustomModel = settings.apiModel === CHAT_MODELS.CUSTOMIZE.name
+		const encoding = isCustomModel ? null : getEncoding(settings)
 		let tokenCount = 0
 
 		// Note: We are not checking for system prompt longer than context window.
 		// That scenario makes no sense, though.
 		const systemPrompt = await getSystemPrompt(node)
 		if (systemPrompt) {
-			tokenCount += encoding.encode(systemPrompt).length
+			if (!isCustomModel && encoding) {
+				tokenCount += encoding.encode(systemPrompt).length
+			}
+			messages.push({
+				role: 'system',
+				content: systemPrompt
+			})
 		}
 
 		const visit = async (node: CanvasNode, depth: number) => {
@@ -122,7 +128,7 @@ export function noteGenerator(
 
 			const nodeData = node.getData()
 			let nodeText = (await readNodeContent(node))?.trim() || ''
-			const inputLimit = getTokenLimit(settings)
+			const inputLimit = isCustomModel ? Infinity : getTokenLimit(settings)
 
 			let shouldContinue = true
 			if (!nodeText) {
@@ -140,34 +146,36 @@ export function noteGenerator(
 			} else {
 				if (isSystemPromptNode(nodeText)) return true
 
-				let nodeTokens = encoding.encode(nodeText)
+				let nodeTokens = isCustomModel || !encoding ? null : encoding.encode(nodeText)
 				let keptNodeTokens: number
 
-				if (tokenCount + nodeTokens.length > inputLimit) {
+				if (!isCustomModel && nodeTokens && tokenCount + nodeTokens.length > inputLimit) {
 					// will exceed input limit
-
 					shouldContinue = false
 
 					// Leaving one token margin, just in case
-					const keepTokens = nodeTokens.slice(0, inputLimit - tokenCount - 1)
-					const truncateTextTo = encoding.decode(keepTokens).length
-					logDebug(
-						`Truncating node text from ${nodeText.length} to ${truncateTextTo} characters`
+					const keepTokens = Math.max(
+						0,
+						inputLimit - tokenCount - 1
 					)
-					nodeText = nodeText.slice(0, truncateTextTo)
-					keptNodeTokens = keepTokens.length
+					if (encoding) {
+						const keepBytes = encoding
+							.decode(nodeTokens.slice(0, keepTokens))
+							.length
+						nodeText = nodeText.slice(0, keepBytes)
+					}
+					keptNodeTokens = keepTokens
 				} else {
-					keptNodeTokens = nodeTokens.length
+					keptNodeTokens = nodeTokens?.length || 0
 				}
 
-				tokenCount += keptNodeTokens
-
-				const role: openai.ChatCompletionRequestMessageRoleEnum =
-					nodeData.chat_role === 'assistant' ? 'assistant' : 'user'
+				if (!isCustomModel) {
+					tokenCount += keptNodeTokens
+				}
 
 				messages.unshift({
 					content: nodeText,
-					role
+					role: 'user'
 				})
 			}
 
@@ -177,13 +185,6 @@ export function noteGenerator(
 		await visitNodeAndAncestors(node, visit)
 
 		if (messages.length) {
-			if (systemPrompt) {
-				messages.unshift({
-					content: systemPrompt,
-					role: 'system'
-				})
-			}
-
 			return { messages, tokenCount }
 		} else {
 			return { messages: [], tokenCount: 0 }
@@ -242,9 +243,10 @@ export function noteGenerator(
 					settings.apiModel,
 					messages,
 					{
-						max_tokens: settings.maxResponseTokens || undefined,
-						temperature: settings.temperature
-					}
+						temperature: settings.temperature,
+						max_tokens: settings.maxResponseTokens || undefined
+					},
+					settings.customModelName
 				)
 
 				if (generated == null) {
@@ -287,6 +289,9 @@ export function noteGenerator(
 }
 
 function getEncoding(settings: ChatStreamSettings) {
+	if (settings.apiModel === CHAT_MODELS.CUSTOMIZE.name) {
+		return null
+	}
 	const model: ChatModelSettings | undefined = chatModelByName(settings.apiModel)
 	return encodingForModel(
 		(model?.encodingFrom || model?.name || DEFAULT_SETTINGS.apiModel) as TiktokenModel
@@ -294,6 +299,9 @@ function getEncoding(settings: ChatStreamSettings) {
 }
 
 function getTokenLimit(settings: ChatStreamSettings) {
+	if (settings.apiModel === CHAT_MODELS.CUSTOMIZE.name) {
+		return Infinity
+	}
 	const model = chatModelByName(settings.apiModel) || CHAT_MODELS.GPT_35_TURBO_0125
 	return settings.maxInputTokens
 		? Math.min(settings.maxInputTokens, model.tokenLimit)

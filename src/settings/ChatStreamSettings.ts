@@ -1,4 +1,4 @@
-import { CHAT_MODELS, OPENAI_COMPLETIONS_URL } from 'src/openai/chatGPT'
+import { CHAT_MODELS, DEFAULT_OPENAI_COMPLETIONS_URL } from 'src/openai/chatGPT'
 
 export interface ChatStreamSettings {
 	/**
@@ -15,6 +15,11 @@ export interface ChatStreamSettings {
 	 * The GPT model to use
 	 */
 	apiModel: string
+
+	/**
+	 * Custom model name when using customize option
+	 */
+	customModelName: string
 
 	/**
 	 * The temperature to use when generating responses (0-2). 0 means no randomness.
@@ -57,8 +62,9 @@ Use step-by-step reasoning. Be brief.
 
 export const DEFAULT_SETTINGS: ChatStreamSettings = {
 	apiKey: '',
-	apiUrl: OPENAI_COMPLETIONS_URL,
+	apiUrl: DEFAULT_OPENAI_COMPLETIONS_URL,
 	apiModel: CHAT_MODELS.GPT_35_TURBO.name,
+	customModelName: '',
 	temperature: 1,
 	systemPrompt: DEFAULT_SYSTEM_PROMPT,
 	debug: false,

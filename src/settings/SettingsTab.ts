@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from 'obsidian'
 import { ChatStreamPlugin } from 'src/ChatStreamPlugin'
 import { getModels } from './ChatStreamSettings'
+import { CHAT_MODELS } from 'src/openai/chatGPT'
 
 export class SettingsTab extends PluginSettingTab {
 	plugin: ChatStreamPlugin
@@ -26,8 +27,25 @@ export class SettingsTab extends PluginSettingTab {
 				cb.onChange(async (value) => {
 					this.plugin.settings.apiModel = value
 					await this.plugin.saveSettings()
+					// Trigger refresh to show/hide custom model input
+					this.display()
 				})
 			})
+
+		if (this.plugin.settings.apiModel === CHAT_MODELS.CUSTOMIZE.name) {
+			new Setting(containerEl)
+				.setName('Custom Model Name')
+				.setDesc('Enter the name of your custom model')
+				.addText((text) => {
+					text
+						.setPlaceholder('e.g., gpt-4-1106-vision-preview')
+						.setValue(this.plugin.settings.customModelName)
+						.onChange(async (value) => {
+							this.plugin.settings.customModelName = value
+							await this.plugin.saveSettings()
+						})
+				})
+		}
 
 		new Setting(containerEl)
 			.setName('API key')
